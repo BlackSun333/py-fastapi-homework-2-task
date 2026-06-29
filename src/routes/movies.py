@@ -1,6 +1,4 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,9 +63,12 @@ async def create_movie(
     try:
         body = await request.json()
         data = MovieCreateSchema(**body)
-    except (ValidationError, Exception):
+    except ValidationError:
+        raise HTTPException(status_code=400, detail="Invalid input data.")
+    except Exception:
         raise HTTPException(status_code=400, detail="Invalid input data.")
 
+    # Duplicate check
     existing = await db.execute(
         select(MovieModel).where(
             MovieModel.name == data.name,
@@ -80,6 +81,7 @@ async def create_movie(
             detail=f"A movie with the name '{data.name}' and release date '{data.date}' already exists.",
         )
 
+    # Country
     country_result = await db.execute(
         select(CountryModel).where(CountryModel.code == data.country)
     )
@@ -89,6 +91,7 @@ async def create_movie(
         db.add(country)
         await db.flush()
 
+    # Genres
     genres = []
     for name in data.genres:
         result = await db.execute(select(GenreModel).where(GenreModel.name == name))
@@ -99,6 +102,7 @@ async def create_movie(
             await db.flush()
         genres.append(genre)
 
+    # Actors
     actors = []
     for name in data.actors:
         result = await db.execute(select(ActorModel).where(ActorModel.name == name))
@@ -125,7 +129,7 @@ async def create_movie(
         date=data.date,
         score=data.score,
         overview=data.overview,
-        status=data.status,
+        status=data.status.value,
         budget=data.budget,
         revenue=data.revenue,
         country_id=country.id,
@@ -186,7 +190,9 @@ async def update_movie(
     try:
         body = await request.json()
         data = MovieUpdateSchema(**body)
-    except (ValidationError, Exception):
+    except ValidationError:
+        raise HTTPException(status_code=400, detail="Invalid input data.")
+    except Exception:
         raise HTTPException(status_code=400, detail="Invalid input data.")
 
     result = await db.execute(select(MovieModel).where(MovieModel.id == movie_id))
@@ -195,6 +201,8 @@ async def update_movie(
         raise HTTPException(status_code=404, detail="Movie with the given ID was not found.")
 
     update_data = data.model_dump(exclude_unset=True)
+    if "status" in update_data and update_data["status"] is not None:
+        update_data["status"] = update_data["status"].value
 
     for field, value in update_data.items():
         setattr(movie, field, value)
