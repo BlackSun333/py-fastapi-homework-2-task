@@ -1,14 +1,15 @@
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from enum import Enum
 from typing import Optional
+import re
 
 from pydantic import BaseModel, field_validator
 
 
 class MovieStatusEnum(str, Enum):
-    released = "Released"
-    post_production = "Post Production"
-    in_production = "In Production"
+    released = "RELEASED"
+    post_production = "POST_PRODUCTION"
+    in_production = "IN_PRODUCTION"
 
 
 class CountrySchema(BaseModel):
@@ -114,6 +115,13 @@ class MovieCreateSchema(BaseModel):
     def non_negative(cls, v: float) -> float:
         if v < 0:
             raise ValueError("Must be non-negative.")
+        return v
+
+    @field_validator("country")
+    @classmethod
+    def country_alpha3(cls, v: str) -> str:
+        if not re.fullmatch(r"[A-Z]{3}", v):
+            raise ValueError("Country must be an ISO 3166-1 alpha-3 code (3 uppercase letters).")
         return v
 
 

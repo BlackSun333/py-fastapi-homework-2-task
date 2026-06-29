@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -56,9 +59,15 @@ async def get_movies(
 
 @router.post("/movies/", response_model=MovieDetailSchema, status_code=201)
 async def create_movie(
-    data: MovieCreateSchema,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    try:
+        body = await request.json()
+        data = MovieCreateSchema(**body)
+    except (ValidationError, Exception):
+        raise HTTPException(status_code=400, detail="Invalid input data.")
+
     existing = await db.execute(
         select(MovieModel).where(
             MovieModel.name == data.name,
@@ -116,7 +125,7 @@ async def create_movie(
         date=data.date,
         score=data.score,
         overview=data.overview,
-        status=data.status.value,
+        status=data.status,
         budget=data.budget,
         revenue=data.revenue,
         country_id=country.id,
@@ -171,17 +180,21 @@ async def delete_movie(movie_id: int, db: AsyncSession = Depends(get_db)):
 @router.patch("/movies/{movie_id}/")
 async def update_movie(
     movie_id: int,
-    data: MovieUpdateSchema,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    try:
+        body = await request.json()
+        data = MovieUpdateSchema(**body)
+    except (ValidationError, Exception):
+        raise HTTPException(status_code=400, detail="Invalid input data.")
+
     result = await db.execute(select(MovieModel).where(MovieModel.id == movie_id))
     movie = result.scalar()
     if not movie:
         raise HTTPException(status_code=404, detail="Movie with the given ID was not found.")
 
     update_data = data.model_dump(exclude_unset=True)
-    if "status" in update_data and update_data["status"] is not None:
-        update_data["status"] = update_data["status"].value
 
     for field, value in update_data.items():
         setattr(movie, field, value)
